@@ -1,6 +1,5 @@
 import IconSparkleLoader from "@/media/IconSparkleLoader";
-import { RealtimeClient } from "@openai/realtime-api-beta";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useState, useEffect } from "react";
 import { SimliClient } from "simli-client";
 import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
@@ -36,15 +35,41 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   // Refs for various components and states
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const openAIClientRef = useRef<RealtimeClient | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+
+  // WebRTC refs
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  
+  // Refs for local audio (microphone)
+  const localStreamRef = useRef<MediaStream | null>(null); // Renamed from streamRef for clarity
+
+  // Refs for processing remote audio (from OpenAI for Simli)
+  const remoteAudioContextRef = useRef<AudioContext | null>(null);
+  const remoteStreamProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const remoteAudioSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+
   const isFirstRun = useRef(true);
 
-  // New refs for managing audio chunk delay
+  // Refs for managing audio chunk delay for Simli
   const audioChunkQueueRef = useRef<Int16Array[]>([]);
   const isProcessingChunkRef = useRef(false);
+
+  // Effect to cleanup WebRTC and AudioContext resources on component unmount
+  useEffect(() => {
+    return () => {
+      console.log("SimliOpenAI unmounting, cleaning up resources...");
+      dataChannelRef.current?.close();
+      peerConnectionRef.current?.close();
+      
+      remoteStreamProcessorRef.current?.disconnect();
+      remoteAudioSourceNodeRef.current?.disconnect();
+      if (remoteAudioContextRef.current?.state !== "closed") {
+        remoteAudioContextRef.current?.close().catch(e => console.error("Error closing remote audio context:", e));
+      }
+      
+      localStreamRef.current?.getTracks().forEach(track => track.stop());
+    };
+  }, []);
 
   /**
    * Initializes the Simli client with the provided configuration.
@@ -53,13 +78,14 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     if (videoRef.current && audioRef.current) {
       const SimliConfig = {
         apiKey: process.env.NEXT_PUBLIC_SIMLI_API_KEY,
-        faceID: simli_faceid,
-        handleSilence: true,
+        faceID: "asian_man_2",
+        handleSilence: false,
         maxSessionLength: 6000, // in seconds
         maxIdleTime: 6000, // in seconds
         videoRef: videoRef.current,
         audioRef: audioRef.current,
         enableConsoleLogs: true,
+        SimliURL: "://35.204.121.205:8892",
       };
 
       simliClient.Initialize(SimliConfig as any);
@@ -67,113 +93,36 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
   }, [simli_faceid]);
 
-  /**
-   * Initializes the OpenAI client, sets up event listeners, and connects to the API.
-   */
-  const initializeOpenAIClient = useCallback(async () => {
-    try {
-      console.log("Initializing OpenAI client...");
-      openAIClientRef.current = new RealtimeClient({
-        model: openai_model,
-        apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-        dangerouslyAllowAPIKeyInBrowser: true,
-      });
+  const sendDataChannelMessage = useCallback((message: object) => {
+    if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+      dataChannelRef.current.send(JSON.stringify(message));
+    } else {
+      console.warn("Data channel not open, cannot send message:", message);
+    }
+  }, []);
 
-      await openAIClientRef.current.updateSession({
+  const sendInitialSessionConfig = useCallback(() => {
+    const sessionUpdatePayload = {
+      type: "session.update",
+      session: {
         instructions: initialPrompt,
         voice: openai_voice,
-        turn_detection: { type: "server_vad" },
-        input_audio_transcription: { model: "whisper-1" },
-      });
+        turn_detection: { type: "server_vad" }, // Ensure this is valid for the new API
+        // For transcription, new models like 'gpt-4o-transcribe' are mentioned.
+        // 'whisper-1' might be for older APIs or specific configurations. Verify this.
+        input_audio_transcription: { model: "whisper-1" }, 
+      },
+    };
+    sendDataChannelMessage(sessionUpdatePayload);
+    console.log("Sent session.update to configure session.");
 
-      // Set up event listeners
-      openAIClientRef.current.on(
-        "conversation.updated",
-        handleConversationUpdate
-      );
-
-      openAIClientRef.current.on(
-        "conversation.interrupted",
-        interruptConversation
-      );
-
-      openAIClientRef.current.on(
-        "input_audio_buffer.speech_stopped",
-        handleSpeechStopped
-      );
-      // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
-
-      
-      await openAIClientRef.current.connect().then(() => {
-        console.log("OpenAI Client connected successfully");
-        openAIClientRef.current?.createResponse();
-        startRecording();
-      });
-
-      setIsAvatarVisible(true);
-    } catch (error: any) {
-      console.error("Error initializing OpenAI client:", error);
-      setError(`Failed to initialize OpenAI client: ${error.message}`);
-    }
-  }, [initialPrompt]);
-
-  /**
-   * Handles conversation updates, including user and assistant messages.
-   */
-  const handleConversationUpdate = useCallback((event: any) => {
-    console.log("Conversation updated:", event);
-    const { item, delta } = event;
-
-    if (item.type === "message" && item.role === "assistant") {
-      console.log("Assistant message detected");
-      if (delta && delta.audio) {
-        const downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
-        audioChunkQueueRef.current.push(downsampledAudio);
-        if (!isProcessingChunkRef.current) {
-          processNextAudioChunk();
-        }
-      }
-    } else if (item.type === "message" && item.role === "user") {
-      setUserMessage(item.content[0].transcript);
-    }
-  }, []);
-
-  /**
-   * Handles interruptions in the conversation flow.
-   */
-  const interruptConversation = () => {
-    console.warn("User interrupted the conversation");
-    simliClient?.ClearBuffer();
-    openAIClientRef.current?.cancelResponse("");
-  };
-
-  /**
-   * Processes the next audio chunk in the queue.
-   */
-  const processNextAudioChunk = useCallback(() => {
-    if (
-      audioChunkQueueRef.current.length > 0 &&
-      !isProcessingChunkRef.current
-    ) {
-      isProcessingChunkRef.current = true;
-      const audioChunk = audioChunkQueueRef.current.shift();
-      if (audioChunk) {
-        const chunkDurationMs = (audioChunk.length / 16000) * 1000; // Calculate chunk duration in milliseconds
-
-        // Send audio chunks to Simli immediately
-        simliClient?.sendAudioData(audioChunk as any);
-        console.log(
-          "Sent audio chunk to Simli:",
-          chunkDurationMs,
-          "Duration:",
-          chunkDurationMs.toFixed(2),
-          "ms"
-        );
-        isProcessingChunkRef.current = false;
-        processNextAudioChunk();
-      }
-    }
-  }, []);
+    // Automatically create a response to start the conversation
+    sendDataChannelMessage({
+      type: "response.create",
+      response: { modalities: ["audio", "text"] },
+    });
+    console.log("Sent response.create to initiate conversation.");
+  }, [initialPrompt, openai_voice, sendDataChannelMessage]);
 
   /**
    * Handles the end of user speech.
@@ -181,6 +130,75 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const handleSpeechStopped = useCallback((event: any) => {
     console.log("Speech stopped event received", event);
   }, []);
+
+  const handleOpenAIEvent = useCallback((eventData: any) => {
+    console.log("OpenAI Data Channel Event:", eventData);
+    switch (eventData.type) {
+      case "session.created":
+        console.log("OpenAI Session created:", eventData.session);
+        // Session is created, now send our specific configurations
+        sendInitialSessionConfig();
+        break;
+      case "session.updated":
+        console.log("OpenAI Session updated:", eventData.session);
+        break;
+      case "conversation.item.created":
+        if (eventData.item?.type === "message" && eventData.item?.role === "user") {
+          // Assuming user transcriptions might come via a 'message' item.
+          // The new API docs are more focused on `input_audio_buffer.speech_stopped` and then full transcript in `response.done`.
+          // This part might need adjustment based on actual events for user transcriptions.
+          if (eventData.item.content && eventData.item.content[0]?.transcript) {
+            setUserMessage(eventData.item.content[0].transcript);
+          } else if (eventData.item.content && eventData.item.content[0]?.text) {
+             setUserMessage(eventData.item.content[0].text);
+          }
+        }
+        break;
+      case "response.text.delta":
+        // Handle streaming text from assistant if needed for UI
+        // e.g., setAssistantPartialTranscript(current => current + eventData.delta);
+        break;
+      case "response.done":
+        console.log("OpenAI Response done:", eventData.response);
+        if (eventData.response?.output) {
+          const assistantMessage = eventData.response.output.find(
+            (out: any) => out.type === "text" || (out.type === "message" && out.role === "assistant")
+          );
+          if (assistantMessage?.text) {
+            // This might be where the final assistant text comes for UI update, if not handled by Simli.
+            // For now, Simli handles audio, and user messages are updated elsewhere.
+          }
+          const userTranscriptionItem = eventData.response.output.find(
+            (out: any) => out.type === "input_text" || (out.type === "message" && out.role === "user")
+          );
+          if (userTranscriptionItem?.text) {
+             setUserMessage(userTranscriptionItem.text);
+          }
+        }
+        break;
+      case "input_audio_buffer.speech_started":
+        console.log("User speech started (VAD)");
+        break;
+      case "input_audio_buffer.speech_stopped":
+        console.log("User speech stopped (VAD)", eventData);
+        handleSpeechStopped(eventData); 
+        // After user speech stops, a `response.done` event often contains the transcription.
+        break;
+      // The 'conversation.interrupted' event from the old API might map to different VAD behaviors
+      // or might not have a direct 1:1 mapping. The new API focuses on turn_detection settings.
+      // case "conversation.interrupted": 
+      //   interruptConversation();
+      //   break;
+      case "error":
+      case "invalid_request_error":
+        console.error("OpenAI Error Event:", eventData);
+        setError(`OpenAI Error: ${eventData.message || JSON.stringify(eventData)}`);
+        break;
+      default:
+        // console.log("Unhandled OpenAI event type:", eventData.type);
+        break;
+    }
+  }, [handleSpeechStopped, sendInitialSessionConfig]);
 
   /**
    * Applies a simple low-pass filter to prevent aliasing of audio
@@ -238,7 +256,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
    * @param outputSampleRate - Target sampling rate in Hz
    * @returns Downsampled audio data as Int16Array
    */
-  const downsampleAudio = (
+  const downsampleAudio = useCallback((
     audioData: Int16Array,
     inputSampleRate: number,
     outputSampleRate: number
@@ -279,68 +297,265 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     }
 
     return result;
-  };
+  }, [applyLowPassFilter]);
 
   /**
-   * Starts audio recording from the user's microphone.
+   * Processes the next audio chunk in the queue for Simli.
    */
-  const startRecording = useCallback(async () => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
+  const processNextAudioChunk = useCallback(() => {
+    if (
+      audioChunkQueueRef.current.length > 0 &&
+      !isProcessingChunkRef.current
+    ) {
+      isProcessingChunkRef.current = true;
+      const audioChunk = audioChunkQueueRef.current.shift();
+      if (audioChunk) {
+        const chunkDurationMs = (audioChunk.length / 16000) * 1000; // Calculate chunk duration in milliseconds
 
-    try {
-      console.log("Starting audio recording...");
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      const source = audioContextRef.current.createMediaStreamSource(
-        streamRef.current
-      );
-      processorRef.current = audioContextRef.current.createScriptProcessor(
-        2048,
-        1,
-        1
-      );
-
-      processorRef.current.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        const audioData = new Int16Array(inputData.length);
-        let sum = 0;
-
-        for (let i = 0; i < inputData.length; i++) {
-          const sample = Math.max(-1, Math.min(1, inputData[i]));
-          audioData[i] = Math.floor(sample * 32767);
-          sum += Math.abs(sample);
-        }
-
-        openAIClientRef.current?.appendInputAudio(audioData);
-      };
-
-      source.connect(processorRef.current);
-      processorRef.current.connect(audioContextRef.current.destination);
-      setIsRecording(true);
-      console.log("Audio recording started");
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      setError("Error accessing microphone. Please check your permissions.");
+        // Send audio chunks to Simli immediately
+        simliClient?.sendAudioData(audioChunk as any);
+        console.log(
+          "Sent audio chunk to Simli:",
+          chunkDurationMs,
+          "Duration:",
+          chunkDurationMs.toFixed(2),
+          "ms"
+        );
+        isProcessingChunkRef.current = false;
+        processNextAudioChunk();
+      }
     }
   }, []);
+
+  /**
+   * Initializes the OpenAI client using WebRTC.
+   */
+  const initializeOpenAIClient = useCallback(async () => {
+    try {
+      console.log("Initializing OpenAI WebRTC client...");
+      setIsLoading(true);
+
+      // --- IMPORTANT SECURITY NOTE ---
+      // The following uses a standard API key client-side. THIS IS INSECURE.
+      // In production, you MUST fetch an EPHEMERAL KEY from your backend.
+      // Example:
+      // const tokenResponse = await fetch("/your-backend/generate-openai-ephemeral-key");
+      // const { client_secret } = await tokenResponse.json();
+      // const ephemeralKey = client_secret.value;
+      const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+      if (!apiKey) {
+        setError("OpenAI API key not found.");
+        setIsLoading(false);
+        return;
+      }
+
+      const pc = new RTCPeerConnection();
+      peerConnectionRef.current = pc;
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log("ICE candidate:", event.candidate);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log("ICE connection state:", pc.iceConnectionState);
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'closed') {
+          setError(`OpenAI connection state: ${pc.iceConnectionState}`);
+          // Consider cleanup or retry logic here
+        }
+      };
+      
+      pc.ontrack = (event) => {
+        console.log("Remote track received from OpenAI:", event.track);
+        if (event.track.kind === "audio" && event.streams[0]) {
+          const remoteStream = event.streams[0];
+          
+          if (!remoteAudioContextRef.current || remoteAudioContextRef.current.state === "closed") {
+            remoteAudioContextRef.current = new AudioContext();
+          }
+          const audioCtx = remoteAudioContextRef.current;
+
+          if (remoteStreamProcessorRef.current) {
+            remoteStreamProcessorRef.current.disconnect();
+          }
+          if (remoteAudioSourceNodeRef.current) {
+            remoteAudioSourceNodeRef.current.disconnect();
+          }
+          
+          remoteAudioSourceNodeRef.current = audioCtx.createMediaStreamSource(remoteStream);
+          remoteStreamProcessorRef.current = audioCtx.createScriptProcessor(2048, 1, 1); // Buffer size, input channels, output channels
+
+          remoteStreamProcessorRef.current.onaudioprocess = (e) => {
+            const inputData = e.inputBuffer.getChannelData(0); // Float32Array
+            const int16Data = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const sample = Math.max(-1, Math.min(1, inputData[i]));
+              int16Data[i] = Math.floor(sample * 32767);
+            }
+
+            // OpenAI's TTS audio is often 24kHz. Simli expects 16kHz.
+            // The sampleRate of the remoteAudioContext might reflect the incoming stream's rate,
+            // or it could be the device default. Assuming 24kHz from OpenAI if not detectable.
+            const openAIOutputSampleRate = audioCtx.sampleRate || 24000; 
+            const downsampledAudio = downsampleAudio(int16Data, openAIOutputSampleRate, 16000);
+            
+            audioChunkQueueRef.current.push(downsampledAudio);
+            if (!isProcessingChunkRef.current) {
+              processNextAudioChunk();
+            }
+          };
+          remoteAudioSourceNodeRef.current.connect(remoteStreamProcessorRef.current);
+          remoteStreamProcessorRef.current.connect(audioCtx.destination); // Essential for onaudioprocess to fire in some browsers
+        }
+      };
+
+      // Get local microphone stream
+      if (localStreamRef.current) { // Stop previous stream if any
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      localStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
+      console.log("Local microphone track added to PeerConnection.");
+      setIsRecording(true);
+
+
+      const dc = pc.createDataChannel("oai-events");
+      dataChannelRef.current = dc;
+
+      dc.onopen = () => {
+        console.log("OpenAI Data Channel opened.");
+        // The `session.created` event should arrive first from the server.
+        // We'll send `session.update` and `response.create` in its handler.
+        // Or, if `session.created` is not guaranteed first, send config here.
+        // For now, assuming `session.created` triggers config.
+      };
+
+      dc.onmessage = (event) => {
+        try {
+          const parsedEvent = JSON.parse(event.data as string);
+          handleOpenAIEvent(parsedEvent);
+        } catch (e) {
+          console.error("Failed to parse OpenAI event:", event.data, e);
+        }
+      };
+
+      dc.onclose = () => {
+        console.log("OpenAI Data Channel closed.");
+        setError("OpenAI data channel closed.");
+      };
+      dc.onerror = (err) => {
+        console.error("OpenAI Data Channel error:", err);
+        setError(`OpenAI data channel error: ${JSON.stringify(err)}`);
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpPostUrl = `https://api.openai.com/v1/realtime?model=${openai_model}`;
+      const sdpResponse = await fetch(sdpPostUrl, {
+        method: "POST",
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${apiKey}`, // EPHEMERAL_KEY in production
+          "Content-Type": "application/sdp",
+        },
+      });
+
+      if (!sdpResponse.ok) {
+        const errorText = await sdpResponse.text();
+        throw new Error(`SDP exchange failed: ${sdpResponse.status} ${errorText}`);
+      }
+
+      const answerSdp = await sdpResponse.text();
+      const answer = { type: "answer" as RTCSdpType, sdp: answerSdp };
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+      
+      console.log("OpenAI WebRTC client connected (SDP exchanged). Waiting for data channel open and session.created event.");
+      setIsAvatarVisible(true);
+
+    } catch (error: any) {
+      console.error("Error initializing OpenAI WebRTC client:", error);
+      setError(`Failed to initialize OpenAI client: ${error.message}`);
+      setIsAvatarVisible(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [openai_model, handleOpenAIEvent, processNextAudioChunk, downsampleAudio, sendInitialSessionConfig]);
+
+  const interruptConversation = useCallback(() => {
+    console.warn("User interrupted the conversation (or VAD triggered interruption)");
+    simliClient?.ClearBuffer();
+    // The new API doc doesn't specify a client-sent event for `response.cancel`.
+    // This might be handled by VAD settings (`turn_detection.interrupt_response = true`).
+    // Or by simply not sending further audio / closing the connection.
+    // sendDataChannelMessage({ type: "response.cancel", response_id: "..." }); // If such an event exists
+    console.log("Attempting to interrupt OpenAI response (mechanism may vary with WebRTC API).");
+  }, [sendDataChannelMessage]);
+
+  /**
+   * Simli Event listeners
+   */
+  const eventListenerSimli = useCallback(() => {
+    if (simliClient) {
+      simliClient?.on("connected", () => {
+        console.log("SimliClient connected");
+        // initializeOpenAIClient(); // No longer called here
+      });
+
+      simliClient?.on("disconnected", () => {
+        console.log("SimliClient disconnected");
+        if (peerConnectionRef.current && peerConnectionRef.current.connectionState !== "closed") {
+            console.log("Simli disconnected, ensuring OpenAI WebRTC is also closed.");
+            dataChannelRef.current?.close();
+            peerConnectionRef.current?.close();
+            dataChannelRef.current = null;
+            peerConnectionRef.current = null;
+
+            if (remoteStreamProcessorRef.current) remoteStreamProcessorRef.current.disconnect();
+            if (remoteAudioSourceNodeRef.current) remoteAudioSourceNodeRef.current.disconnect();
+            if (remoteAudioContextRef.current?.state !== "closed") {
+              remoteAudioContextRef.current?.close().catch(e => console.error("Error closing remote audio context on Simli disconnect:", e));
+            }
+        }
+      });
+    }
+  }, []); // Dependencies removed as it only sets up listeners and uses refs for cleanup
+
+  /**
+   * Starts audio recording from the user's microphone (now part of WebRTC setup).
+   */
+  const startRecording = useCallback(async () => {
+    // With WebRTC, getUserMedia and track addition happen during initializeOpenAIClient.
+    // This function might just be for state or can be deprecated if not controlling WebRTC setup phases.
+    if (peerConnectionRef.current && localStreamRef.current) {
+        console.log("Audio recording (local microphone) is active via WebRTC.");
+        setIsRecording(true);
+    } else {
+        console.warn("WebRTC not initialized, cannot confirm recording state.");
+        // Optionally, trigger initialization if not already started
+        // initializeOpenAIClient(); 
+    }
+  }, [/*initializeOpenAIClient*/]);
 
   /**
    * Stops audio recording from the user's microphone
    */
   const stopRecording = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+    console.log("Stopping local audio recording (microphone)...");
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+      // Removing track from peer connection if connection is to be reused or kept partially open.
+      // For full stop, closing the peer connection handles this.
+      // peerConnectionRef.current?.getSenders().forEach(sender => {
+      //   if (sender.track === localStreamRef.current?.getAudioTracks()[0]) {
+      //     peerConnectionRef.current?.removeTrack(sender);
+      //   }
+      // });
+      localStreamRef.current = null;
     }
     setIsRecording(false);
-    console.log("Audio recording stopped");
+    console.log("Local audio recording stopped.");
   }, []);
 
   /**
@@ -352,18 +567,28 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     onStart();
 
     try {
-      console.log("Starting...");
-      initializeSimliClient();
-      await simliClient?.start();
-      eventListenerSimli();
+      console.log("Starting interaction flow...");
+      initializeSimliClient(); // Initialize Simli config
+      eventListenerSimli();    // Set up Simli event listeners
+
+      console.log("Attempting to start Simli client...");
+      await simliClient?.start(); // Connect Simli client (async)
+      console.log("Simli client started successfully.");
+
+      console.log("Attempting to initialize OpenAI client...");
+      await initializeOpenAIClient(); // Connect OpenAI client (async)
+      console.log("OpenAI client initialized successfully.");
+
     } catch (error: any) {
       console.error("Error starting interaction:", error);
       setError(`Error starting interaction: ${error.message}`);
+      // Ensure avatar visibility is reset if something fails early
+      setIsAvatarVisible(false); 
     } finally {
-      setIsAvatarVisible(true);
+      // setIsAvatarVisible(true); // This is now set within initializeOpenAIClient on success
       setIsLoading(false);
     }
-  }, [onStart]);
+  }, [onStart, initializeSimliClient, eventListenerSimli, initializeOpenAIClient]);
 
   /**
    * Handles stopping the interaction, cleaning up resources and resetting states.
@@ -372,39 +597,42 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     console.log("Stopping interaction...");
     setIsLoading(false);
     setError("");
-    stopRecording();
-    setIsAvatarVisible(false);
+    
+    stopRecording(); // Stops local microphone
+
     simliClient?.close();
-    openAIClientRef.current?.disconnect();
-    if (audioContextRef.current) {
-      audioContextRef.current?.close();
-      audioContextRef.current = null;
+
+    // Close WebRTC connection
+    if (dataChannelRef.current) {
+      dataChannelRef.current.close();
+      dataChannelRef.current = null;
     }
-    stopRecording();
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+    console.log("OpenAI WebRTC connection closed.");
+
+    // Clean up remote audio processing chain
+    if (remoteStreamProcessorRef.current) {
+        remoteStreamProcessorRef.current.disconnect();
+        remoteStreamProcessorRef.current = null;
+    }
+    if (remoteAudioSourceNodeRef.current) {
+        remoteAudioSourceNodeRef.current.disconnect();
+        remoteAudioSourceNodeRef.current = null;
+    }
+    if (remoteAudioContextRef.current && remoteAudioContextRef.current.state !== "closed") {
+      remoteAudioContextRef.current.close().then(() => {
+        remoteAudioContextRef.current = null;
+        console.log("Remote audio context closed.");
+      }).catch(e => console.error("Error closing remote audio context during stop:", e));
+    }
+    
+    setIsAvatarVisible(false);
     onClose();
-    console.log("Interaction stopped");
-  }, [stopRecording]);
-
-  /**
-   * Simli Event listeners
-   */
-  const eventListenerSimli = useCallback(() => {
-    if (simliClient) {
-      simliClient?.on("connected", () => {
-        console.log("SimliClient connected");
-        // Initialize OpenAI client
-        initializeOpenAIClient();
-      });
-
-      simliClient?.on("disconnected", () => {
-        console.log("SimliClient disconnected");
-        openAIClientRef.current?.disconnect();
-        if (audioContextRef.current) {
-          audioContextRef.current?.close();
-        }
-      });
-    }
-  }, []);
+    console.log("Interaction stopped and resources cleaned up.");
+  }, [stopRecording, onClose]);
 
   return (
     <>

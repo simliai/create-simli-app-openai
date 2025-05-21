@@ -4,10 +4,11 @@ import React, { useCallback, useRef, useState } from "react";
 import { SimliClient } from "simli-client";
 import VideoBox from "./Components/VideoBox";
 import cn from "./utils/TailwindMergeAndClsx";
+import { text } from "stream/consumers";
 
 interface SimliOpenAIProps {
   simli_faceid: string;
-  openai_voice: "alloy"|"ash"|"ballad"|"coral"|"echo"|"sage"|"shimmer"|"verse";
+  openai_voice: "alloy" | "ash" | "ballad" | "coral" | "echo" | "sage" | "shimmer" | "verse";
   openai_model: string;
   initialPrompt: string;
   onStart: () => void;
@@ -43,7 +44,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   const isFirstRun = useRef(true);
 
   // New refs for managing audio chunk delay
-  const audioChunkQueueRef = useRef<Int16Array[]>([]);
+  const audioChunkQueueRef = useRef<ArrayBufferLike[]>([]);
   const isProcessingChunkRef = useRef(false);
 
   /**
@@ -53,13 +54,16 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
     if (videoRef.current && audioRef.current) {
       const SimliConfig = {
         apiKey: process.env.NEXT_PUBLIC_SIMLI_API_KEY,
-        faceID: simli_faceid,
+        // faceID: simli_faceid,
+        faceID: "asian_lady/happy_0",
         handleSilence: true,
         maxSessionLength: 6000, // in seconds
         maxIdleTime: 6000, // in seconds
         videoRef: videoRef.current,
         audioRef: audioRef.current,
         enableConsoleLogs: true,
+        // disableSuperRes: true,
+        // SimliURL: "://34.13.180.205:8892"
       };
 
       simliClient.Initialize(SimliConfig as any);
@@ -103,7 +107,7 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       );
       // openAIClientRef.current.on('response.canceled', handleResponseCanceled);
 
-      
+
       await openAIClientRef.current.connect().then(() => {
         console.log("OpenAI Client connected successfully");
         openAIClientRef.current?.createResponse();
@@ -120,15 +124,41 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   /**
    * Handles conversation updates, including user and assistant messages.
    */
+
+  let audioBuffer = new Uint8Array(256000)
+  const textMessage = (new TextEncoder()).encode("PLAY_IMMEDIATE")
+  audioBuffer.set(textMessage, 0)
+  let currentPosition = 14
+
   const handleConversationUpdate = useCallback((event: any) => {
     console.log("Conversation updated:", event);
     const { item, delta } = event;
 
     if (item.type === "message" && item.role === "assistant") {
       console.log("Assistant message detected");
-      if (delta && delta.audio) {
-        const downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
-        audioChunkQueueRef.current.push(downsampledAudio);
+      if ((delta && delta.audio) || item.status === "completed") {
+        let downsampledAudio = null;
+        if (delta && delta.audio) {
+          downsampledAudio = downsampleAudio(delta.audio, 24000, 16000);
+        }
+
+        if (currentPosition > 128000 || item.status === "completed") {
+          audioChunkQueueRef.current.push(audioBuffer.buffer);
+          audioBuffer = new Uint8Array(256000)
+          if (item.status === "completed") {
+            audioBuffer.set(textMessage, 0)
+            currentPosition = 14;
+          }
+          else {
+            currentPosition = 0;
+          }
+        }
+        else if (downsampledAudio) {
+          audioBuffer.set(new Uint8Array(downsampledAudio.buffer), currentPosition)
+          currentPosition += downsampledAudio.byteLength
+          console.log(currentPosition)
+        }
+
         if (!isProcessingChunkRef.current) {
           processNextAudioChunk();
         }
@@ -143,6 +173,9 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
    */
   const interruptConversation = () => {
     console.warn("User interrupted the conversation");
+    audioBuffer = new Uint8Array(256000)
+    audioBuffer.set(textMessage, 0)
+    currentPosition = 14;
     simliClient?.ClearBuffer();
     openAIClientRef.current?.cancelResponse("");
   };
@@ -158,17 +191,17 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
       isProcessingChunkRef.current = true;
       const audioChunk = audioChunkQueueRef.current.shift();
       if (audioChunk) {
-        const chunkDurationMs = (audioChunk.length / 16000) * 1000; // Calculate chunk duration in milliseconds
+        // const chunkDurationMs = (audioChunk.length / 16000) * 1000; // Calculate chunk duration in milliseconds
 
         // Send audio chunks to Simli immediately
         simliClient?.sendAudioData(audioChunk as any);
-        console.log(
-          "Sent audio chunk to Simli:",
-          chunkDurationMs,
-          "Duration:",
-          chunkDurationMs.toFixed(2),
-          "ms"
-        );
+        // console.log(
+        //   "Sent audio chunk to Simli:",
+        //   chunkDurationMs,
+        //   "Duration:",
+        //   chunkDurationMs.toFixed(2),
+        //   "ms"
+        // );
         isProcessingChunkRef.current = false;
         processNextAudioChunk();
       }
@@ -409,9 +442,8 @@ const SimliOpenAI: React.FC<SimliOpenAIProps> = ({
   return (
     <>
       <div
-        className={`transition-all duration-300 ${
-          showDottedFace ? "h-0 overflow-hidden" : "h-auto"
-        }`}
+        className={`transition-all duration-300 ${showDottedFace ? "h-0 overflow-hidden" : "h-auto"
+          }`}
       >
         <VideoBox video={videoRef} audio={audioRef} />
       </div>

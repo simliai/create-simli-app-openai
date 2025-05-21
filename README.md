@@ -23,7 +23,7 @@ npm run dev
 const avatar = {
   name: "Frank",
   simli_faceid: "5514e24d-6086-46a3-ace4-6a7264e5cb7c",
-  initialPrompt: "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have.",
+  initialPrompt: "You are a friendly AI named Jason, you start greeting the user by saying something along the lines of, hello there my name is jason, its great to meet you, thank you for taking the time to talk today, I really appreciate it. ",
 };
 ```
 

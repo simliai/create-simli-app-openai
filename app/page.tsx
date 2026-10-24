@@ -5,7 +5,7 @@ export default function Home() {
   return (
     <main>
       <header>
-        <h1>Simli + OpenAI Realtime</h1>
+        <h1>Simli + OpenAI GPT-Live</h1>
         <p>A real-time video avatar on Trinity-2. Change the face, voice and prompt in <code>app/config.ts</code>.</p>
       </header>
       <OpenAIAvatar name={avatar.name} />

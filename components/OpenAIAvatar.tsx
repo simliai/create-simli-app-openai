@@ -5,13 +5,14 @@ import type { SimliClient } from "simli-client";
 import { startSimli } from "@/lib/simli";
 import AvatarStage, { type Status } from "./AvatarStage";
 
-// OpenAI Realtime listens and speaks over WebRTC; its voice is sent to Simli,
+// OpenAI's GPT-Live listens and speaks over WebRTC; its voice is sent to Simli,
 // which plays it back in sync with the avatar's lips.
 export default function OpenAIAvatar({ name }: { name: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const simli = useRef<SimliClient | null>(null);
   const peer = useRef<RTCPeerConnection | null>(null);
+  const channel = useRef<RTCDataChannel | null>(null);
   const mic = useRef<MediaStream | null>(null);
   const run = useRef(0);
   const [status, setStatus] = useState<Status>("idle");
@@ -20,8 +21,12 @@ export default function OpenAIAvatar({ name }: { name: string }) {
 
   function stop() {
     run.current++;
-    peer.current?.close();
+    // Ask GPT-Live to end the session (so usage is final), then hang up.
+    const pc = peer.current, ch = channel.current;
+    if (ch?.readyState === "open") ch.send(JSON.stringify({ type: "session.close" }));
+    setTimeout(() => pc?.close(), 500);
     peer.current = null;
+    channel.current = null;
     mic.current?.getTracks().forEach((t) => t.stop());
     mic.current = null;
     simli.current?.stop();
@@ -50,11 +55,7 @@ export default function OpenAIAvatar({ name }: { name: string }) {
       if (cancelled()) return stream.getTracks().forEach((t) => t.stop());
       mic.current = stream;
 
-      // 3. OpenAI Realtime over WebRTC, with a short-lived key from our server.
-      const res = await fetch("/api/openai-token", { method: "POST" });
-      const token = await res.json();
-      if (!res.ok) throw new Error(token.error);
-
+      // 3. GPT-Live over WebRTC. Our server creates the session for this offer.
       const pc = new RTCPeerConnection();
       peer.current = pc;
       pc.addTrack(stream.getAudioTracks()[0], stream);
@@ -67,17 +68,26 @@ export default function OpenAIAvatar({ name }: { name: string }) {
         client.listenToMediastreamTrack(e.track);
       };
 
+      let firstMessage = "";
+      let lastSpoke = 0; // a new caption starts when Kate speaks again after a pause
       const events = pc.createDataChannel("oai-events");
-      events.onopen = () => events.send(JSON.stringify({ type: "response.create" })); // the avatar speaks first
+      channel.current = events;
       events.onmessage = (e) => {
         const event = JSON.parse(e.data);
-        if (event.type === "input_audio_buffer.speech_started") {
-          client.ClearBuffer(); // the user interrupted: stop talking right away
-          setCaption("");
-        } else if (event.type === "response.created") {
-          setCaption("");
-        } else if (event.type === "response.output_audio_transcript.delta") {
-          setCaption((c) => c + event.delta);
+        if (event.type === "session.started") {
+          setStatus("live");
+          // GPT-Live waits for the user by default, so ask it to say hello first.
+          events.send(JSON.stringify({
+            type: "session.instructions.append",
+            delegation_id: null,
+            content: `Greet the user now by saying: "${firstMessage}"`,
+          }));
+        } else if (event.type === "session.output_transcript.delta") {
+          const newTurn = Date.now() - lastSpoke > 1500;
+          lastSpoke = Date.now();
+          setCaption((c) => (newTurn ? event.delta.trimStart() : c + event.delta));
+        } else if (event.type === "session.closed") {
+          if (!cancelled()) { stop(); setStatus("idle"); }
         } else if (event.type === "error") {
           console.error("OpenAI:", event.error);
           setError(`OpenAI: ${event.error?.message ?? "unknown error"}`);
@@ -86,15 +96,22 @@ export default function OpenAIAvatar({ name }: { name: string }) {
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const answer = await fetch("https://api.openai.com/v1/realtime/calls", {
-        method: "POST",
-        body: offer.sdp,
-        headers: { Authorization: `Bearer ${token.key}`, "Content-Type": "application/sdp" },
+      // Send the offer once it lists every network route.
+      await new Promise<void>((resolve) => {
+        if (pc.iceGatheringState === "complete") return resolve();
+        pc.addEventListener("icegatheringstatechange", () => pc.iceGatheringState === "complete" && resolve());
+        setTimeout(resolve, 2000);
       });
-      if (!answer.ok) throw new Error(`OpenAI didn't accept the call (${answer.status}): ${await answer.text()}`);
+      const res = await fetch("/api/openai-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sdp: pc.localDescription!.sdp }),
+      });
+      const answer = await res.json();
+      if (!res.ok) throw new Error(answer.error);
       if (cancelled()) return;
-      await pc.setRemoteDescription({ type: "answer", sdp: await answer.text() });
-      setStatus("live");
+      firstMessage = answer.firstMessage;
+      await pc.setRemoteDescription({ type: "answer", sdp: answer.sdp });
     } catch (e) {
       if (cancelled()) return;
       stop();

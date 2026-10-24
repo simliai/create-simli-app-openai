@@ -13,10 +13,12 @@ export const avatar = {
 };
 
 export const agent = {
-  // Speech-to-speech model. "gpt-realtime-2.1-mini" is cheaper.
-  model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1",
-  voice: "marin",
+  // GPT-Live: OpenAI's newest voice model. It listens while it talks, so you can interrupt it naturally.
+  model: "gpt-live-1",
+  // GPT-Live voices: quartz, ripple, vesper, willow, stone, gleam, meridian, bossa, tempo, beacon,
+  // delta, cinder, nuri, juni, flitz, brise, sillage, nira, harema, shida, noeul, marin.
+  voice: process.env.OPENAI_VOICE || "juni",
+  firstMessage: "Hi, I'm Kate! I'm a real-time video avatar made with Simli. What would you like to talk about?",
   instructions: `You are Kate, a friendly assistant shown as a real-time video avatar made with Simli.
-Greet the user in one short sentence and ask what they'd like to talk about.
 Keep every answer short and conversational: one to three sentences, no lists or markdown.`,
 };

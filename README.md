@@ -1,6 +1,6 @@
-# Simli + OpenAI Realtime
+# Simli + OpenAI GPT-Live
 
-A real-time video avatar you can talk to. OpenAI Realtime listens and answers by voice, and [Simli](https://www.simli.com) turns that voice into a lip-synced Trinity-2 avatar, live.
+A real-time video avatar you can talk to. OpenAI's GPT-Live listens and answers by voice, and [Simli](https://www.simli.com) turns that voice into a lip-synced Trinity-2 avatar, live.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsimliai%2Fcreate-simli-app-openai&env=SIMLI_API_KEY,OPENAI_API_KEY&envDescription=Your%20Simli%20and%20OpenAI%20API%20keys&envLink=https%3A%2F%2Fgithub.com%2Fsimliai%2Fcreate-simli-app-openai%23setup&project-name=simli-openai-avatar)
 
@@ -24,14 +24,14 @@ Everything is in [`app/config.ts`](app/config.ts):
 
 - **Face:** any Trinity-2 face ID. Pick a [preset](https://docs.simli.com/api-reference/preset-faces) or [make your own from a photo](https://app.simli.com).
 - **Video size:** 16:9 by default; 1:1 and 9:16 work too.
-- **Voice, model and prompt:** any OpenAI Realtime voice and model. `gpt-realtime-2.1-mini` is cheaper.
+- **Voice, greeting and prompt:** any of GPT-Live's voices (the list is in the file).
 
 ## How it works
 
-1. The browser asks the server for two short-lived tokens: a Simli session token (`app/api/simli-token`) and an OpenAI Realtime key (`app/api/openai-token`). Your API keys never leave the server.
+1. The browser gets a Simli session token from the server (`app/api/simli-token`), and the server starts the GPT-Live session for the browser's WebRTC offer (`app/api/openai-session`). Your API keys never leave the server.
 2. Simli starts the avatar video in the page ([`lib/simli.ts`](lib/simli.ts)).
-3. The browser connects to OpenAI Realtime over WebRTC and sends your microphone ([`components/OpenAIAvatar.tsx`](components/OpenAIAvatar.tsx)).
-4. OpenAI's voice goes into Simli, which plays it in sync with the avatar's lips. When you start talking, the avatar stops right away.
+3. The browser connects to GPT-Live over WebRTC and sends your microphone ([`components/OpenAIAvatar.tsx`](components/OpenAIAvatar.tsx)).
+4. GPT-Live's voice goes into Simli, which plays it in sync with the avatar's lips. GPT-Live listens while it talks, so you can interrupt it like a person.
 
 ## Before you go to production
 

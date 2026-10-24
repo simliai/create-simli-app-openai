@@ -1,33 +1,30 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --bg: #0b0b0c;
+  --panel: #151517;
+  --fg: #f2f2f0;
+  --muted: #9a9a96;
+  --accent: #4a6cf7;
+  --danger: #e5484d;
+  color-scheme: dark;
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
-}
-
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 40px 16px; display: flex; flex-direction: column; gap: 24px; }
+h1 { font-size: 24px; margin: 0 0 4px; font-weight: 600; }
+header p, .hint { color: var(--muted); margin: 0; }
+code { background: var(--panel); padding: 1px 6px; border-radius: 4px; font-size: 0.9em; }
+.stage { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.screen { position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--panel); border-radius: 12px; overflow: hidden; }
+.screen video { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.4s; }
+.screen[data-live="true"] video { opacity: 1; }
+.screen-note { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: var(--muted); font-size: 18px; }
+.caption { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(90%, 720px); margin: 0;
+  padding: 8px 12px; background: rgba(0, 0, 0, 0.6); border-radius: 8px; text-align: center; }
+.button { min-width: 220px; height: 48px; padding: 0 24px; border: 0; border-radius: 999px; background: var(--accent);
+  color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+.button:hover { filter: brightness(1.1); }
+.button.stop { background: var(--danger); }
+.error { color: var(--danger); margin: 0; text-align: center; max-width: 720px; overflow-wrap: anywhere; }
+footer { display: flex; gap: 20px; justify-content: center; }
+footer a { color: var(--muted); }

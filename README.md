@@ -1,36 +1,43 @@
-# Create Simli App (OpenAI)
-This starter is an example of how to create a composable Simli interaction that runs in a Next.js app.
+# Simli + OpenAI Realtime
 
- ## Usage
- 1. Rename .env_sample to .env and paste your API keys: [SIMLI-API-KEY](https://www.simli.com/profile) and [OPENAI-API-KEY](https://platform.openai.com/settings/profile?tab=api-keys) <br/> If you want to try Simli but don't have API access to these third parties, ask in Discord and we can help you out with that ([Discord Link](https://discord.gg/yQx49zNF4d)). 
-```js
-NEXT_PUBLIC_SIMLI_API_KEY="SIMLI-API-KEY"
-NEXT_PUBLIC_OPENAI_API_KEY="OPENAI-API-KEY"
-``` 
+A real-time video avatar you can talk to. OpenAI Realtime listens and answers by voice, and [Simli](https://www.simli.com) turns that voice into a lip-synced Trinity-2 avatar, live.
 
-2. Insall packages
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fsimliai%2Fcreate-simli-app-openai&env=SIMLI_API_KEY,OPENAI_API_KEY&envDescription=Your%20Simli%20and%20OpenAI%20API%20keys&envLink=https%3A%2F%2Fgithub.com%2Fsimliai%2Fcreate-simli-app-openai%23setup&project-name=simli-openai-avatar)
+
+## Setup
+
+You need Node.js 20 or newer, a [Simli API key](https://app.simli.com) (free plan included) and an [OpenAI API key](https://platform.openai.com/api-keys).
+
 ```bash
+git clone https://github.com/simliai/create-simli-app-openai
+cd create-simli-app-openai
 npm install
-```
-
-3. Run
-```bash
+cp .env.example .env.local   # then paste in your two keys
 npm run dev
 ```
 
-4. Customize your avatar's face and prompt by editing app/page.tsx.
-```js
-const avatar = {
-  name: "Frank",
-  simli_faceid: "5514e24d-6086-46a3-ace4-6a7264e5cb7c",
-  initialPrompt: "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have.",
-};
-```
+Open http://localhost:3000, press **Start conversation** and allow the microphone.
 
-## Characters
-You can swap out the character by finding one that you like in the [docs](https://docs.simli.com/introduction), or [create your own](https://app.simli.com/) 
+## Make it yours
 
-![alt text](media/image.png) ![alt text](media/image-4.png) ![alt text](media/image-2.png) ![alt text](media/image-3.png) ![alt text](media/image-5.png) ![alt text](media/image-6.png)
+Everything is in [`app/config.ts`](app/config.ts):
 
-## Deploy on Vercel
-An easy way to deploy your avatar interaction to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme). 
+- **Face:** any Trinity-2 face ID. Pick a [preset](https://docs.simli.com/api-reference/preset-faces) or [make your own from a photo](https://app.simli.com).
+- **Video size:** 16:9 by default; 1:1 and 9:16 work too.
+- **Voice, model and prompt:** any OpenAI Realtime voice and model. `gpt-realtime-2.1-mini` is cheaper.
+
+## How it works
+
+1. The browser asks the server for two short-lived tokens: a Simli session token (`app/api/simli-token`) and an OpenAI Realtime key (`app/api/openai-token`). Your API keys never leave the server.
+2. Simli starts the avatar video in the page ([`lib/simli.ts`](lib/simli.ts)).
+3. The browser connects to OpenAI Realtime over WebRTC and sends your microphone ([`components/OpenAIAvatar.tsx`](components/OpenAIAvatar.tsx)).
+4. OpenAI's voice goes into Simli, which plays it in sync with the avatar's lips. When you start talking, the avatar stops right away.
+
+## Before you go to production
+
+The token routes are open to anyone who can reach your site, so each visit can use your Simli minutes and OpenAI credit. Put them behind your own sign-in or rate limiting. `maxSessionSeconds` in `app/config.ts` caps each session.
+
+## More
+
+- [Simli docs](https://docs.simli.com) and [all starters](https://docs.simli.com/api-reference/samples/all-samples)
+- Questions? Ask on [Discord](https://discord.gg/yQx49zNF4d).

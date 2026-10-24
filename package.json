@@ -1,40 +1,23 @@
 {
-    "name": "create-simli-app",
-    "version": "0.1.0",
-    "private": true,
-    "scripts": {
-        "dev": "next dev",
-        "build": "next build",
-        "start-server": "node server.js",
-        "start": "npm-run-all --parallel start-server dev",
-        "lint": "next lint"
-    },
-    "dependencies": {
-        "@deepgram/sdk": "^3.5.1",
-        "@openai/realtime-api-beta": "github:simliai/openai-realtime-api-beta",
-        "axios": "^1.13.5",
-        "clsx": "^2.1.1",
-        "cors": "^2.8.5",
-        "dotenv": "^16.4.5",
-        "express": "^4.19.2",
-        "groq-sdk": "^0.6.1",
-        "next": "14.2.35",
-        "openai": "^4.61.0",
-        "react": "^18",
-        "react-dom": "^18",
-        "simli-client": "^3.0.0",
-        "tailwind-merge": "^2.5.2",
-        "ws": "^8.18.0"
-    },
-    "devDependencies": {
-        "@types/node": "^20",
-        "@types/react": "^18",
-        "@types/react-dom": "^18",
-        "eslint": "^8",
-        "eslint-config-next": "14.2.7",
-        "npm-run-all": "^4.1.5",
-        "postcss": "^8",
-        "tailwindcss": "^3.4.1",
-        "typescript": "^5"
-    }
+  "name": "create-simli-app-openai",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "simli-client": "3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5.9"
+  }
 }

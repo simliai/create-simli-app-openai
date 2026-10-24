@@ -23,7 +23,7 @@ FACE_ID = os.getenv("SIMLI_FACE_ID") or "c060fe44-9b14-43e8-b92c-83a0e230db11"
 
 # GPT-Live voices: quartz, ripple, vesper, willow, stone, gleam, meridian, bossa, tempo, beacon,
 # delta, cinder, nuri, juni, flitz, brise, sillage, nira, harema, shida, noeul, marin.
-VOICE = os.getenv("OPENAI_VOICE") or "juni"
+VOICE = os.getenv("OPENAI_VOICE") or "willow"
 
 INSTRUCTIONS = """You are Kate, a friendly assistant shown as a real-time video avatar made with Simli.
 Keep every answer short and conversational: one to three sentences, no lists or markdown."""

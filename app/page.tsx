@@ -1,14 +1,13 @@
-import OpenAIAvatar from "@/components/OpenAIAvatar";
-import { avatar } from "./config";
+import LiveKitAvatar from "@/components/LiveKitAvatar";
 
 export default function Home() {
   return (
     <main>
       <header>
-        <h1>Simli + OpenAI GPT-Live</h1>
-        <p>A real-time video avatar on Trinity-2. Change the face, voice and prompt in <code>app/config.ts</code>.</p>
+        <h1>Simli + OpenAI GPT-Live on LiveKit</h1>
+        <p>A LiveKit voice agent that talks through OpenAI&apos;s GPT-Live, with a Simli Trinity-2 avatar as its face. Change the face, voice and prompt in <code>agent/agent.py</code>.</p>
       </header>
-      <OpenAIAvatar name={avatar.name} />
+      <LiveKitAvatar name="Kate" />
       <footer>
         <a href="https://docs.simli.com">Docs</a>
         <a href="https://app.simli.com">Create your own avatar</a>

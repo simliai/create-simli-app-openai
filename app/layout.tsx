@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Simli + OpenAI GPT-Live",
-  description: "A real-time video avatar that talks with OpenAI GPT-Live, made with Simli.",
+  title: "Simli + OpenAI GPT-Live on LiveKit",
+  description: "A LiveKit voice agent on OpenAI GPT-Live with a Simli avatar.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

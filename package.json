@@ -6,13 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "agent": "cd agent && uv run agent.py dev",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "livekit-client": "2.23.0",
+    "livekit-server-sdk": "2.19.2",
     "next": "16.4.3",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "simli-client": "3.1.0"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -1,0 +1,11 @@
+[project]
+name = "simli-livekit-agent"
+version = "1.0.0"
+description = "A LiveKit voice agent on GPT-Live with a Simli Trinity-2 avatar"
+requires-python = ">=3.10"
+dependencies = [
+    "livekit-agents==1.8.9",
+    "livekit-plugins-openai==1.8.9",
+    "livekit-plugins-simli==1.8.9",
+    "python-dotenv>=1.0",
+]

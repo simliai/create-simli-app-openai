@@ -7,3 +7,7 @@ next-env.d.ts
 .env*.local
 .vercel
 .DS_Store
+
+# The agent
+agent/.venv/
+__pycache__/

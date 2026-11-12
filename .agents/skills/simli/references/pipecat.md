@@ -80,9 +80,11 @@ Rules:
 
 ## Run and test
 
-With Pipecat's development runner, `python bot.py` serves a prebuilt browser client at http://localhost:7860: press **Connect** and allow the microphone.
+With Pipecat's development runner, `python bot.py -t webrtc` serves a prebuilt browser client at http://localhost:7860: press **Connect** and allow the microphone. `-t webrtc` enables only the WebRTC transport.
 
-The runner is for development only. Anyone who can reach its port can start a conversation and spend the user's Simli minutes and model credit, so keep it on localhost or behind sign-in, and use Pipecat's deployment guide for production.
+The runner is for development only, and by default it allows requests from **any origin**, so any website open in the user's browser can start billed bots on localhost. Set `PIPECAT_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:7860` (in `.env`, loaded before `main()` runs). Anyone who can reach the runner's port, or a page that proxies to it, can start conversations: put auth in front of any proxy route before deploying, and use Pipecat's deployment guide for production.
+
+**Cap the whole conversation, not just Simli.** `SimliVideoService` doesn't end the pipeline when Simli ends its session, so the LLM keeps running. Schedule `worker.cancel()` (or end the task) after the session length, cancel that timer when the client disconnects, and set the worker's idle timeout to match Simli's `max_idle_time`.
 
 ## Errors
 

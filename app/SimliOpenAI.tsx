@@ -12,9 +12,11 @@ import { explainSimliError } from "./utils/simliErrors";
  * OpenAI Realtime (WebRTC) speaking through a Simli avatar.
  *
  *   1. Microphone permission (echo cancellation on).
- *   2. Our server mints a Simli session token and an ephemeral OpenAI client secret.
+ *   2. Our server mints a Simli session token (POST /api/simli-token).
  *   3. Simli starts first; start() resolves when the avatar is on screen.
- *   4. Only then the OpenAI WebRTC call opens, and the model greets the user.
+ *   4. Only then the OpenAI WebRTC call opens: the page posts its SDP offer to
+ *      our server (POST /api/openai-session), which creates the call with the
+ *      server-side key and config and returns the SDP answer. The model greets first.
  *      The model's audio track goes to Simli (listenToMediastreamTrack) and is
  *      never played directly: the user hears Simli's in-sync voice only.
  *   5. Ending either side (button, Simli time/idle limit, OpenAI hang-up,
@@ -24,21 +26,16 @@ import { explainSimliError } from "./utils/simliErrors";
  *       https://developers.openai.com/api/docs/guides/voice-webrtc?api=realtime
  */
 
-const OPENAI_REALTIME_CALLS_URL = "https://api.openai.com/v1/realtime/calls";
-
 type Status = "idle" | "starting" | "live";
 
 interface SimliOpenAIProps {
   avatarName: string;
 }
 
-async function postJson<T>(url: string, what: string): Promise<T> {
-  const res = await fetch(url, { method: "POST" });
-  const body = (await res.json().catch(() => null)) as (T & { error?: string }) | null;
-  if (!res.ok || !body) {
-    throw new Error(`${what} failed (${res.status}): ${body?.error ?? res.statusText}`);
-  }
-  return body;
+/** Reads `{ error }` from a failed response of our own API routes. */
+async function routeError(res: Response, what: string): Promise<Error> {
+  const body = (await res.json().catch(() => null)) as { error?: string } | null;
+  return new Error(`${what} failed (${res.status}): ${body?.error ?? res.statusText}`);
 }
 
 type RealtimeServerEvent = { type: string; error?: { message?: string; code?: string } };
@@ -130,11 +127,10 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
       }
       micRef.current = mic;
 
-      // 2. Tokens from our own server. No API key ever reaches the browser.
-      const [{ session_token }, { client_secret }] = await Promise.all([
-        postJson<{ session_token: string }>("/api/simli-token", "Simli token"),
-        postJson<{ client_secret: string }>("/api/openai-session", "OpenAI session"),
-      ]);
+      // 2. Simli session token from our own server. No API key ever reaches the browser.
+      const tokenRes = await fetch("/api/simli-token", { method: "POST" });
+      if (!tokenRes.ok) throw await routeError(tokenRes, "Avatar session");
+      const { session_token } = (await tokenRes.json()) as { session_token: string };
       if (cancelled()) return;
 
       // 3. Simli first: the avatar must be ready before the model says anything.
@@ -153,7 +149,7 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
       await simli.start(); // resolves when the first video frame is on screen
       if (cancelled()) return;
 
-      // 4. OpenAI Realtime over WebRTC with the ephemeral secret.
+      // 4. OpenAI Realtime over WebRTC; our server creates the call (see app/api/openai-session).
       const pc = new RTCPeerConnection();
       pcRef.current = pc;
       pc.ontrack = (e) => {
@@ -193,14 +189,14 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      const sdpRes = await fetch(OPENAI_REALTIME_CALLS_URL, {
+      const sdpRes = await fetch("/api/openai-session", {
         method: "POST",
         body: offer.sdp,
-        headers: { Authorization: `Bearer ${client_secret}`, "Content-Type": "application/sdp" },
+        headers: { "Content-Type": "application/sdp" },
       });
+      if (!sdpRes.ok) throw await routeError(sdpRes, "Voice session");
       const answer = await sdpRes.text();
       if (cancelled()) return;
-      if (!sdpRes.ok) throw new Error(`OpenAI Realtime connection failed (${sdpRes.status}): ${answer}`);
       await pc.setRemoteDescription({ type: "answer", sdp: answer });
       if (cancelled()) return;
 

@@ -60,7 +60,7 @@ If `SIMLI_FACE_ID` isn't set, the script checks the Anna preset. If there's no k
 
 A demo that works but looks wrong is the main reason people give up. Before calling it done:
 
-- **Match the video shape to the layout.** The default stream is 768x768. For a desktop video-call layout use 16:9 (`1366x768`); for mobile portrait use 9:16 (`768x1366`). Set the same size in the framework's video output. See [references/trinity-2.md](references/trinity-2.md).
+- **Match the video shape to the layout.** The default stream is 768x768: keep it for a square tile. For a desktop video-call layout use 16:9 (`1366x768`); for mobile portrait use 9:16 (`768x1366`). Set the same size in the framework's video output and the player's CSS `aspect-ratio`. See [references/trinity-2.md](references/trinity-2.md).
 - **Greet immediately.** Have the agent say a short greeting as soon as the avatar is ready, so the user sees it come alive instead of a still face. For hosted agents (ElevenLabs, Vapi) this is the agent's "first message" setting: tell the user to set it.
 - **Avoid self-interruption.** The avatar's voice plays from the speakers while the mic is open. Open the mic with `echoCancellation: true`, and suggest headphones if the agent still hears itself.
 - **Show the video properly.** `<video autoPlay playsInline>` plus a separate `<audio autoPlay>`. Size the element with CSS `object-fit: cover` (or `contain`) to the stream's aspect ratio. Start sessions from a user click, so browsers allow audio autoplay.
@@ -80,12 +80,13 @@ A demo that works but looks wrong is the main reason people give up. Before call
 
 ## Complete example apps
 
-Each is a working, tested starter; clone one when the user wants a runnable project rather than an integration into existing code:
+Each is maintained by Simli and keeps every key on the server (check that the repo's README doesn't use `NEXT_PUBLIC_` keys; versions before November 2026 did); clone one when the user wants a runnable project rather than an integration into existing code:
 
 - LiveKit Agents + OpenAI Realtime + web page: https://github.com/simliai/create-simli-app-livekit-agents
 - Pipecat + OpenAI Realtime + web page: https://github.com/simliai/create-simli-app-pipecat
-- ElevenLabs Agents in Next.js: https://github.com/simliai/create-simli-app-elevenlabs (local demo; move the key server-side before deploying)
+- ElevenLabs Agents in Next.js: https://github.com/simliai/create-simli-app-elevenlabs
 - Vapi in the browser: https://github.com/simliai/create-simli-app-vapi
-- Deepgram + OpenAI + ElevenLabs in Next.js: https://github.com/simliai/create-simli-app
+- OpenAI Realtime (WebRTC) in Next.js: https://github.com/simliai/create-simli-app-openai
+- Deepgram + OpenAI + ElevenLabs in Next.js with its own server: https://github.com/simliai/create-simli-app
 
 Support: Discord https://discord.gg/yQx49zNF4d

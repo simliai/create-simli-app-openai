@@ -168,35 +168,64 @@ client.listenToAudioElement(agentAudioEl); // also mutes that element: the user 
 
 Set `handleSilence: false` in the token config for this style: a live track already carries its own silence, and Simli's gap filling would cut into it and cause audio artifacts.
 
-**Don't play the original track as well.** With `listenToMediastreamTrack`, do not attach the remote track to a playing element (or mute it); with `listenToAudioElement` the SDK mutes it for you. The user should only hear `audioRef` (Simli's in-sync voice).
+**Don't play the original track as well.** With `listenToMediastreamTrack`, attach the remote stream to a **muted** `<audio>` element (Chrome may feed silence to Web Audio from a remote WebRTC track that isn't attached to any media element), and never to an unmuted one. With `listenToAudioElement` the SDK mutes it for you. The user should only hear `audioRef` (Simli's in-sync voice).
+
+With a continuous track, the track keeps sending audio (including silence), so `maxIdleTime` may never trigger: rely on `maxSessionLength` and your own end-of-conversation handling.
 
 ## Recipes
 
+Simli's maintained starters implement each of these end to end; read one when the user wants a complete app. Each keeps every secret on the server.
+
 ### ElevenLabs Agents (WebSocket)
 
-**Read [elevenlabs.md](elevenlabs.md)**: a complete, tested Next.js app (token route, signed-URL route, client component with mic capture, lifecycle and error handling). Key points:
+**Read [elevenlabs.md](elevenlabs.md)**: a complete Next.js app (token route, signed-URL route, client component with mic capture, lifecycle and error handling). Starter: https://github.com/simliai/create-simli-app-elevenlabs. Key points:
 
-- Both keys stay on the server: Simli via the token route, ElevenLabs via a signed-URL route (`GET https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=...`, header `xi-api-key`, response `{signed_url}`).
+- Both keys stay on the server: Simli via the token route, ElevenLabs via a signed-URL route: `GET https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=...` (hyphenated path; older docs used `get_signed_url`), header `xi-api-key`, response `{signed_url}`. Signed URLs expire after about 15 minutes, so fetch one per conversation. Use either signed URLs (agent authentication on) or a domain allowlist, not both.
 - The ElevenLabs agent's output audio format must be **PCM 16000 Hz** (`pcm_16000`). Its greeting is the agent's **First message** setting.
-- Start Simli first, then open the ElevenLabs socket. `audio` events go to `sendAudioData`, `interruption` to `ClearBuffer()`.
+- Start Simli first, then open the ElevenLabs socket. `audio` events go to `sendAudioData`, `interruption` to `ClearBuffer()`, `ping` gets `{type: "pong", event_id}`. Show `client_error` messages and unexpected close codes to the user.
 - Use `handleSilence: true`.
-- Don't copy `create-simli-app-elevenlabs` as is: it creates the Simli token in the browser.
-- If the user already uses the ElevenLabs JS SDK (`@elevenlabs/client`), which plays audio itself, capture its output with `listenToAudioElement`/`listenToMediastreamTrack` (style B, `handleSilence: false`) instead of re-implementing the WebSocket.
+- Prefer the raw WebSocket over the ElevenLabs JS SDK (`@elevenlabs/client`) here: in WebSocket mode the SDK always plays the agent's audio itself (`onAudio` gives you the audio, but playback can only be silenced with `setVolume(0)` after the session starts), and in WebRTC mode it doesn't expose the remote track. If the user's app already depends on the SDK, use `onAudio` → `sendAudioData` plus `setVolume(0)` immediately after start, and say that it's timing-dependent.
 
-### OpenAI Realtime
+### OpenAI Realtime (WebRTC, ephemeral key)
 
-- Recommended: run OpenAI Realtime on a server with LiveKit Agents or Pipecat ([livekit.md](livekit.md), [pipecat.md](pipecat.md)). Both handle audio conversion, interruptions and keys for you.
-- In the browser over WebRTC (ephemeral key minted by the user's server): take the remote audio track from `pc.ontrack` and pass it to `client.listenToMediastreamTrack(track)` with `handleSilence: false`. Don't attach that track to a playing element.
-- With the WebSocket API, audio deltas are base64 PCM16 at **24 kHz**: resample to 16 kHz before `sendAudioData`, and call `ClearBuffer()` when the user starts speaking (`input_audio_buffer.speech_started`).
-- Don't use the old `@openai/realtime-api-beta` library in new code (deprecated), even though the `create-simli-app-openai` starter does.
+Starter: https://github.com/simliai/create-simli-app-openai. Running OpenAI Realtime on a server with LiveKit Agents or Pipecat ([livekit.md](livekit.md), [pipecat.md](pipecat.md)) is the more robust production choice; the browser path is:
+
+1. **Server route** (`POST /api/openai-session`): mint an ephemeral client secret with `POST https://api.openai.com/v1/realtime/client_secrets` using `OPENAI_API_KEY`, with the session config set there (`session: { type: "realtime", model, instructions, audio: { output: { voice } } }`, plus `expires_after`). The browser never chooses the model or prompt. Use the current realtime model and a recommended voice (for example `marin`) from OpenAI's docs (https://developers.openai.com/api/docs/guides/voice-webrtc).
+2. **Browser:** create an `RTCPeerConnection`, add the mic track, open the `oai-events` data channel, then POST the SDP offer to `https://api.openai.com/v1/realtime/calls` (`Content-Type: application/sdp`, `Authorization: Bearer <ephemeral secret>`).
+3. **Audio to Simli:** in `pc.ontrack`, attach the stream to a **muted** `<audio>`, then `simliClient.listenToMediastreamTrack(event.track)` with `handleSilence: false` in the Simli token config.
+4. **Greeting:** when the data channel opens (and Simli's `start()` has resolved), send `{"type": "response.create"}` so the model speaks first.
+5. **Barge-in:** server VAD stops the model's response itself; also call `ClearBuffer()` on `input_audio_buffer.speech_started` from the data channel, to drop audio Simli has queued.
+6. **WebSocket API instead of WebRTC:** audio deltas are base64 PCM16 at **24 kHz**: resample to 16 kHz before `sendAudioData` ([audio.md](audio.md)).
+
+Notes: OpenAI's Agents SDK (`@openai/agents`, `RealtimeSession`) accepts your own muted `audioElement`, but sends the browser-side agent's instructions and voice on connect, so it can't keep the config server-side. The browser can still send `session.update` on its own call (it can't change the model or get the key), so treat the prompt as visible to users. Don't use the deprecated `@openai/realtime-api-beta` library. Check OpenAI's docs for GPT-Live, which OpenAI recommends for new voice apps; on a server, Pipecat 1.16+ passes GPT-Live's voice to Simli.
 
 ### Vapi
 
-Reference: https://github.com/simliai/create-simli-app-vapi. Feed the assistant's audio track to `listenToMediastreamTrack` (`handleSilence: false`) and keep the Vapi public key / assistant config as Vapi documents it. The Simli key still stays server-side.
+Starter: https://github.com/simliai/create-simli-app-vapi (`@vapi-ai/web` 3.x, which needs Node.js 22.14+).
 
-### Your own TTS
+- Only Vapi's **public** key goes to the browser (that's how Vapi's web SDK works): name it `NEXT_PUBLIC_VAPI_PUBLIC_KEY`, restrict its allowed origins and assistants in the Vapi dashboard, and keep transient assistants disabled. The private key never goes client-side; for a stricter setup, sign a short-lived Vapi token on the server. The Simli key stays server-side as always.
+- Get the assistant's audio: `vapi.on("audio", (player) => …)` or `vapi.getAudioPlayer()`, then take the track from `player.srcObject`. Silence Vapi's own playback with `vapi.setVolume(0)`.
+- Two audio styles work: stream the track (`listenToMediastreamTrack`, `handleSilence: false`, lowest latency), or, as the starter does for better lip-sync, buffer the assistant's speech between Vapi's `speech-start` and `speech-end` events and send it with `sendAudioDataImmediate` (first ~1 s) then `sendAudioData` (`handleSilence: true`), at the cost of about 1 s extra delay. `speech-start`/`speech-end` come from an audio-level check that stays "speaking" for about 1 s after the last sound.
+- Interruptions: call `ClearBuffer()` on the `message` event with `type === "user-interrupted"`.
 
-Fetch TTS audio on the server (keys stay there) as PCM16 16 kHz mono if the provider supports it (for example ElevenLabs `output_format=pcm_16000`, Cartesia `pcm_s16le` at 16000, OpenAI TTS `response_format=pcm` is 24 kHz and needs resampling). Stream chunks to the browser and call `sendAudioData` as they arrive. Call `ClearBuffer()` on interruption.
+### Your own STT → LLM → TTS pipeline
+
+Starter: https://github.com/simliai/create-simli-app (Deepgram + OpenAI + ElevenLabs, one Node server).
+
+- `generateSimliSessionToken` works from any Node server, not just Next.js route handlers.
+- Run STT, LLM and TTS on the server; stream TTS audio to the browser as PCM16 16 kHz (for example ElevenLabs `output_format=pcm_16000` with `eleven_flash_v2_5`, key in the `xi-api-key` header, `flush: true` at the end of each turn; Cartesia `pcm_s16le` at 16000; OpenAI TTS `response_format=pcm` is 24 kHz and needs resampling). The browser calls `sendAudioData` as chunks arrive, with `handleSilence: true`.
+- Barge-in without a provider "interruption" event: treat the first non-empty interim transcript from STT as the interruption. On the server, stop sending stale TTS audio *before* sending the interrupt message on the same ordered socket, and cancel the in-flight LLM and TTS requests; in the browser, `ClearBuffer()`.
+- Greet first: once Simli's `start()` resolves, have the server synthesize a greeting.
+- Protect the server's socket: check `Origin`, require a short-lived ticket from an authenticated endpoint, bound message sizes and rates, and close idle connections.
+
+## Layout
+
+Match the stream to the UI that exists. If the layout is a square tile, keep the default 768x768 and style the player `aspect-ratio: 1 / 1`; switch to 1366x768 (16:9) or 768x1366 (9:16) only when the layout is that shape.
+
+## Browser quirks
+
+- Capturing the mic into `new AudioContext({ sampleRate: 16000 })` can fail in some Firefox versions (a mic source can't connect to a context at a different rate). Fall back to the default rate and resample to 16 kHz inside the AudioWorklet.
+- Safari may need `audioContext.resume()` inside the click handler.
 
 ## Peer-to-peer mode (optional)
 

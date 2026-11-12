@@ -1,6 +1,6 @@
 # ElevenLabs Agents + Simli: complete Next.js example
 
-A tested, minimal Next.js (App Router, TypeScript) app: click **Start**, talk to an ElevenLabs Conversational AI agent, and it answers through a Simli avatar at 16:9. It type-checks and builds with `next@14.2.35`, `react@18`, `simli-client@3.2.0`. Copy these files into the user's app and adapt the UI; keep the order and the lifecycle handling.
+A tested, minimal Next.js (App Router, TypeScript) app: click **Start**, talk to an ElevenLabs Conversational AI agent, and it answers through a Simli avatar at 16:9. It type-checks and builds with `next@14.2.35`, `react@18`, `simli-client@3.2.0`; the same code is used in https://github.com/simliai/create-simli-app-elevenlabs on Next 16 / React 19, which also handles a few more edge cases (cancelling a start in progress, `client_error`, the agent's reported input format, a Firefox mic fallback). Copy these files into the user's app and adapt the UI; keep the order and the lifecycle handling.
 
 ## How it fits together
 
@@ -79,7 +79,7 @@ export async function POST() {
     return Response.json({ error: "ELEVENLABS_API_KEY / ELEVENLABS_AGENT_ID are not set on the server" }, { status: 500 });
   }
   const r = await fetch(
-    `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${encodeURIComponent(agentId)}`,
+    `https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=${encodeURIComponent(agentId)}`,
     { headers: { "xi-api-key": apiKey }, cache: "no-store" },
   );
   if (!r.ok) return Response.json({ error: `ElevenLabs: ${r.status} ${await r.text()}` }, { status: 502 });
@@ -343,5 +343,6 @@ export default function Page() {
 Notes:
 
 - The `<video>` is `muted` because the voice plays through the separate `<audio>` element, which is Simli's in-sync audio. Don't play the ElevenLabs audio anywhere else.
+- Not handled here, but in the starter: clicking End while `simli.start()` is still pending (check a cancelled flag before opening the ElevenLabs socket), ElevenLabs `client_error` messages, and capturing the mic at the agent's reported `user_input_audio_format` rate with a fallback for Firefox (see [browser-js.md](browser-js.md#browser-quirks)).
 - `pagehide` can't wait for the async `stop()` to finish. That's fine: Simli also ends the session when the connection drops, and `maxIdleTime` bounds it anyway.
 - The ElevenLabs message shapes used here: `user_audio_chunk`, `audio_event.audio_base_64`, `interruption`, `ping_event.event_id` → `{type: "pong", event_id}`, and `conversation_initiation_metadata_event.agent_output_audio_format`. They match ElevenLabs' WebSocket API as of late 2026. If ElevenLabs changes them, follow its current docs.

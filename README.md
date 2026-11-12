@@ -2,9 +2,9 @@
 
 A Next.js starter where an [OpenAI Realtime](https://developers.openai.com/api/docs/guides/realtime) voice agent talks to you through a real-time [Simli](https://simli.com) video avatar.
 
-- **OpenAI Realtime over WebRTC** in the browser, authenticated with a short-lived ephemeral client secret minted by the server.
+- **OpenAI Realtime over WebRTC** in the browser. Your server creates the call (OpenAI's "unified interface"), so no OpenAI credential of any kind reaches the browser.
 - **Simli** turns the model's voice into a lip-synced avatar video. You hear Simli's in-sync audio only; the model's original audio is never played.
-- **No API key reaches the browser.** Both keys stay in server-side environment variables; the browser only gets short-lived tokens from two API routes.
+- **No API key reaches the browser.** Both keys stay in server-side environment variables; the browser only gets a short-lived Simli session token and an SDP answer.
 
 Simli docs: https://docs.simli.com
 
@@ -16,16 +16,18 @@ Browser                                   Your Next.js server              Provi
 click "Test Interaction"
   ├─ mic permission (echo cancellation)
   ├─ POST /api/simli-token  ────────────► SIMLI_API_KEY  ────────────────► Simli: session token
-  ├─ POST /api/openai-session ──────────► OPENAI_API_KEY + session config ► OpenAI: ephemeral secret (ek_…)
   ├─ SimliClient.start()  (avatar on screen)
-  └─ WebRTC call to api.openai.com/v1/realtime/calls with the ephemeral secret
+  ├─ POST /api/openai-session (SDP offer) ► OPENAI_API_KEY + session config ► OpenAI POST /v1/realtime/calls
+  │                         ◄── SDP answer ┘  + hang-up timer (600 s) ──────► /v1/realtime/calls/{id}/hangup
+  └─ WebRTC media + "oai-events" data channel directly with OpenAI
        model audio track ──► simliClient.listenToMediastreamTrack()  ──► avatar video + voice
        "speech_started"  ──► simliClient.ClearBuffer()  (barge-in)
 ```
 
 1. The avatar starts first; the OpenAI call opens only once the avatar is on screen, then the model greets the user.
-2. The model, voice and instructions are set on the server (`app/avatar.ts`) when the ephemeral secret is minted.
+2. The model, voice and instructions are set on the server (`app/avatar.ts`) when the server creates the call.
 3. Ending either side ends both: the Stop button, Simli's session limits, OpenAI hanging up, errors, leaving the page or closing the tab.
+4. Time limits (see [Limits](#limits)): Simli ends its session after 600 s, and the server hangs up the OpenAI call after about 600 s even if the page doesn't.
 
 ## Setup
 
@@ -55,7 +57,7 @@ Requirements: Node.js 20.9+ and a browser with microphone access (localhost or H
    npm run dev
    ```
 
-4. Open http://localhost:3000, click **Test Interaction**, allow the microphone, and talk. Headphones help if the avatar hears itself and interrupts.
+4. Open http://127.0.0.1:3000 (the dev server listens on 127.0.0.1 only), click **Test Interaction**, allow the microphone, and talk. Headphones help if the avatar hears itself and interrupts.
 
 Other scripts: `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`.
 
@@ -75,19 +77,37 @@ Other scripts: `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`
   If you change the face, update the name and voice in `app/avatar.ts` to match.
   You can also [create your own avatar](https://app.simli.com) from a photo.
 - **Video shape:** the UI shows a square avatar box, so the Simli stream is square (768x768). For a 16:9 layout, set `streaming_width: 1366, streaming_height: 768` in `app/api/simli-token/route.ts` and change the box in `app/Components/VideoBox.tsx` to `aspect-video`. The two must match.
-- **Session limits:** `maxSessionLength` (600 s) and `maxIdleTime` (180 s) in `app/api/simli-token/route.ts`.
+- **Session limits:** `SESSION_MAX_SECONDS` (600) and `SIMLI_MAX_IDLE_SECONDS` (180) in `lib/server-env.ts`. See [Limits](#limits).
+
+## Limits
+
+What is capped, and by whom:
+
+| | Cap | Enforced by |
+|---|---|---|
+| Simli session length | 600 s (`maxSessionLength`) | Simli's servers |
+| Simli idle time | 180 s without audio (`maxIdleTime`) | Simli's servers. **May never fire** while the OpenAI call is connected: a WebRTC audio track keeps delivering (silent) audio. Rely on the length cap. |
+| OpenAI call length | ~615 s: the route calls `POST /v1/realtime/calls/{id}/hangup` | **A timer in your server process.** Reliable with `next start` or any long-running Node server. **Not reliable on serverless** (e.g. Vercel functions), which may freeze or recycle the instance after the response; a restart also drops pending timers. |
+| OpenAI call length, fallback | 60 minutes | OpenAI's maximum Realtime session length |
+| Either side | when the page closes, the user clicks Stop, or the other side ends | the browser code (not a security boundary) |
+
+On serverless, either run the app as a long-running Node server, or move the hang-up to something that survives: a queue/scheduled job (for example Upstash QStash or a cron) that calls the hang-up endpoint with the call ID, or a [server-side control connection](https://developers.openai.com/api/docs/guides/voice-server-controls?api=realtime) (`wss://api.openai.com/v1/realtime?call_id=...`) held by a worker. In every case, set a budget on the OpenAI project.
 
 ## Before you deploy
 
-The two API routes start sessions that are billed to your accounts. As shipped, **anyone who can reach your site can call them.** Before deploying:
+The two API routes start sessions that are billed to your accounts, and as shipped they have **no authentication**. So in production they **fail closed**: both return `403` unless `ALLOW_UNAUTHENTICATED_SESSIONS=true`. Before deploying:
 
-- [ ] **Add auth and/or rate limiting** to `app/api/simli-token/route.ts` and `app/api/openai-session/route.ts` (both have a `TODO`). For example, require your app's signed-in session, and limit sessions per user and per IP (for example with your hosting provider's firewall or a store like Upstash/Redis).
-- [ ] If you have signed-in users, send a hashed user ID as the `OpenAI-Safety-Identifier` header when minting the OpenAI secret (see the comment in the route).
+- [ ] **Add auth and rate limiting** where the `TODO`s are (`rejectUnlessSessionsAllowed()` in `lib/server-env.ts`, called by both routes). For example, require your app's signed-in session and limit sessions per user and per IP (your host's firewall, or a store like Upstash/Redis). Only set `ALLOW_UNAUTHENTICATED_SESSIONS=true` if you accept that anyone can start sessions.
+- [ ] **Know what is capped server-side** (see [Limits](#limits)). The Simli cap is enforced by Simli. The OpenAI hang-up timer only works on a long-running server; on serverless, add a durable hang-up or accept OpenAI's 60-minute maximum.
+- [ ] **Set provider limits:** a monthly budget / usage limit on the OpenAI project (use a dedicated project for this app), and check your Simli plan's concurrency and minutes.
+- [ ] **Rotate old keys.** Earlier versions of this starter put both keys in `NEXT_PUBLIC_` variables, which are embedded in the JavaScript sent to every visitor. If you ever deployed or shared a build of an earlier version, rotate **both** your Simli and OpenAI API keys.
+- [ ] If you have signed-in users, send a hashed user ID as the `OpenAI-Safety-Identifier` header (see the comment in `app/api/openai-session/route.ts`).
 - [ ] Set `SIMLI_API_KEY`, `OPENAI_API_KEY` (and optionally `SIMLI_FACE_ID`) in your host's environment settings. Never commit `.env*` files (they are git-ignored, except `.env.example`).
-- [ ] Review `maxSessionLength` / `maxIdleTime` and set spending limits in the OpenAI and Simli dashboards.
 - [ ] Serve over HTTPS (browsers require it for the microphone).
 
-Note: the ephemeral OpenAI secret is bound to the server's session config, but like any Realtime client the browser can still send `session.update` events on its own call (for example, to change the instructions for that one session). It can't change the model or get your API key. Don't put secrets in the prompt, and keep sensitive actions (tools) on the server.
+In production, error responses are generic (details go to the server log). The app also sends `Content-Security-Policy: frame-ancestors 'self'`, `Permissions-Policy: microphone=(self), camera=()`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` (see `next.config.ts`).
+
+Note: the session config is set on the server, but the browser holds the call's data channel, so it can still send `session.update` events (for example, to change the instructions for its own call) until the call is hung up. It can't change the model or get your API key. Don't put secrets in the prompt, and keep sensitive actions (tools) on the server.
 
 ## Deploy on Vercel
 
@@ -108,6 +128,7 @@ npx skills add simliai/skills
 ## Troubleshooting
 
 - **"... is not set on the server"**: create `.env.local` (see Setup) and restart `npm run dev`.
+- **403 "Sessions are disabled on this deployment"**: production fails closed; see [Before you deploy](#before-you-deploy).
 - **Avatar doesn't move / no sound**: check the browser console, and that nothing blocks `*.simli.ai` (VPN, firewall). Start from a click so the browser allows audio.
 - **The avatar interrupts itself**: use headphones; the microphone is opened with echo cancellation, but loud speakers can still leak.
 - **Too many sessions (429)**: stop other sessions; closed tabs end their session automatically.

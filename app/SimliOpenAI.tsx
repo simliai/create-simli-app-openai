@@ -32,6 +32,25 @@ interface SimliOpenAIProps {
   avatarName: string;
 }
 
+/**
+ * simli-client 3.2.0's stop() closes the connection but leaves the audio worklet that
+ * listenToMediastreamTrack attached, so it keeps sending into a closed socket and throws
+ * "Invalid State, WS Connection 3" every few hundred ms. Detach it before stopping.
+ * Remove once simli-client's stop() does this itself.
+ */
+function detachSimliAudio(simli: SimliClient) {
+  const internals = simli as unknown as { sourceNode?: AudioNode | null; audioWorklet?: AudioWorkletNode | null };
+  try {
+    internals.sourceNode?.disconnect();
+    if (internals.audioWorklet) {
+      internals.audioWorklet.port.onmessage = null;
+      internals.audioWorklet.disconnect();
+    }
+  } catch {
+    // Already detached.
+  }
+}
+
 /** Reads `{ error }` from a failed response of our own API routes. */
 async function routeError(res: Response, what: string): Promise<Error> {
   const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -79,6 +98,7 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
 
     const simli = simliRef.current;
     simliRef.current = null;
+    if (simli) detachSimliAudio(simli);
     // pagehide can't await this; Simli also ends the session when the connection drops.
     simli?.stop().catch(() => {});
 

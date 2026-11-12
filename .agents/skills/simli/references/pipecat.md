@@ -78,6 +78,23 @@ Rules:
 - Don't route the TTS audio to the output around Simli: Simli's output already contains the voice, in sync.
 - `is_trinity_avatar` is deprecated since 1.16 and does nothing: leave it out.
 
+## Video quality (SmallWebRTCTransport)
+
+The bot re-encodes Simli's video. With `SmallWebRTCTransport`, aiortc does it, starting at 0.5–1 Mbit/s (VP8 caps at 1.5 Mbit/s): at 1366x768 the mouth smears and lip sync looks off. Raise aiortc's limits near the top of the bot (measured: ~0.4 → ~2 Mbit/s, much sharper, same CPU):
+
+```python
+import aiortc.codecs.h264
+import aiortc.codecs.vpx
+
+VIDEO_BITRATE = 2_500_000  # bits per second; enough for 1366x768
+for codec in (aiortc.codecs.vpx, aiortc.codecs.h264):
+    codec.DEFAULT_BITRATE = VIDEO_BITRATE
+    codec.MIN_BITRATE = VIDEO_BITRATE // 2
+    codec.MAX_BITRATE = VIDEO_BITRATE * 2
+```
+
+Daily and other hosted transports don't need this.
+
 ## Run and test
 
 With Pipecat's development runner, `python bot.py -t webrtc` serves a prebuilt browser client at http://localhost:7860: press **Connect** and allow the microphone. `-t webrtc` enables only the WebRTC transport.
@@ -97,6 +114,7 @@ The runner is for development only, and by default it allows requests from **any
 | Black video, voice works | `video_out_enabled` is off, or (Pipecat ≤ 1.15) the bot hasn't spoken yet |
 | Avatar never moves with GPT-Live | Pipecat ≤ 1.15: upgrade to 1.16 |
 | Stretched or cropped video | transport size doesn't match the Simli stream size |
+| Blurry mouth, lip sync looks off (SmallWebRTCTransport) | aiortc's low default video bitrate: see Video quality above |
 
 ## Older Pipecat (1.15 or earlier)
 

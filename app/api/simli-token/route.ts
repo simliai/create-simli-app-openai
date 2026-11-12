@@ -42,9 +42,9 @@ export async function POST() {
     // The OpenAI voice arrives as a live WebRTC track (listenToMediastreamTrack),
     // which already contains its own silence, so Simli must not add gap filling.
     handleSilence: false,
-    // Square video, matching the square avatar box in the UI (aspect-ratio 1 / 1).
-    // For a 16:9 layout use 1366x768 and change the box's aspect ratio to match.
-    streaming_width: 768,
+    // 16:9 video (Trinity-2's full frame), matching the aspect-video player in app/Components/VideoBox.tsx.
+    // For a square layout use 768x768 and set the player to aspect-square.
+    streaming_width: 1366,
     streaming_height: 768,
   };
 

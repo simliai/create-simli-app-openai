@@ -26,8 +26,8 @@ export function requireEnv(name: string): string {
   return value;
 }
 
-/** Default face: the Trinity-2 preset "Anna". */
-export const DEFAULT_SIMLI_FACE_ID = "bf13113a-355a-4d97-8b90-4edccd1da7b2";
+/** Default face: Simli's default Trinity-2 face (a woman: keep a female voice in app/avatar.ts). */
+export const DEFAULT_SIMLI_FACE_ID = "14c60d62-6ebf-424d-b626-1f4f91c33b04";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -44,7 +44,7 @@ Requirements: Node.js 20.9+ and a browser with microphone access (localhost or H
 
    ```bash
    SIMLI_API_KEY=...
-   SIMLI_FACE_ID=bf13113a-355a-4d97-8b90-4edccd1da7b2   # optional; default is the "Anna" preset
+   SIMLI_FACE_ID=14c60d62-6ebf-424d-b626-1f4f91c33b04   # optional; default is Simli's default Trinity-2 face
    OPENAI_API_KEY=...
    ```
 
@@ -64,19 +64,19 @@ Other scripts: `npm run build`, `npm start`, `npm run lint`, `npm run typecheck`
 ## Customize the avatar
 
 - **Prompt, voice, model:** edit `app/avatar.ts` (server-only).
-  The default model is `gpt-realtime-2.1`; `gpt-realtime-2.1-mini` is cheaper and faster. OpenAI recommends the `marin` and `cedar` voices.
+  The default model is `gpt-realtime-2.1`; `gpt-realtime-2.1-mini` is cheaper and faster. OpenAI recommends the `marin` (female) and `cedar` (male) voices. Match the voice to the face: the default face is a woman, so the default voice is `marin`.
 - **Face:** set `SIMLI_FACE_ID`. Use one of your own avatars (dashboard → Your Avatars) or a [preset face](https://docs.simli.com/api-reference/preset-faces):
 
   | Preset | Face ID |
   |---|---|
-  | Anna (default) | `bf13113a-355a-4d97-8b90-4edccd1da7b2` |
+  | Simli's default Trinity-2 face (default) | `14c60d62-6ebf-424d-b626-1f4f91c33b04` |
   | Lukas | `a36d66df-a23d-4569-996b-d0e990019857` |
   | Mei | `084479bf-de7c-4df0-8d9c-5484193ecd27` |
   | Mateo | `99767950-9d68-4783-a305-9118006d3363` |
 
   If you change the face, update the name and voice in `app/avatar.ts` to match.
   You can also [create your own avatar](https://app.simli.com) from a photo.
-- **Video shape:** the UI shows a square avatar box, so the Simli stream is square (768x768). For a 16:9 layout, set `streaming_width: 1366, streaming_height: 768` in `app/api/simli-token/route.ts` and change the box in `app/Components/VideoBox.tsx` to `aspect-video`. The two must match.
+- **Video shape:** the stream is 16:9 (1366x768, Trinity-2's full frame) to match the `aspect-video` player in `app/Components/VideoBox.tsx`. For a square layout, set `streaming_width: 768, streaming_height: 768` in `app/api/simli-token/route.ts` and change the player (and the placeholder in `app/Components/DottedFace.tsx`) to `aspect-square`. The two must match. See [Trinity-2 framing](https://docs.simli.com/api-reference/trinity-2).
 - **Session limits:** `SESSION_MAX_SECONDS` (600) and `SIMLI_MAX_IDLE_SECONDS` (180) in `lib/server-env.ts`. See [Limits](#limits).
 
 ## Limits

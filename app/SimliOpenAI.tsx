@@ -226,7 +226,7 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
   const showDottedFace = status === "idle";
 
   return (
-    <div>
+    <div className="w-full">
       {showDottedFace && <DottedFace />}
       <div className={cn("transition-all duration-300", showDottedFace ? "h-0 overflow-hidden" : "h-auto")}>
         <VideoBox video={videoRef} audio={audioRef} />
@@ -234,12 +234,12 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
       {/* OpenAI's original audio: muted, never heard (see openaiSinkRef). */}
       <audio ref={openaiSinkRef} muted autoPlay hidden />
 
-      <div className="flex flex-col items-center">
+      <div className="flex flex-col items-center w-full max-w-[350px] mx-auto">
         {status === "idle" ? (
           <button
             onClick={start}
             className={cn(
-              "w-full h-[52px] mt-4 bg-simliblue text-white py-3 px-6 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-xs",
+              "w-full h-[52px] mt-4 bg-simliblue text-white py-3 px-6 rounded-[100px] transition-all duration-300 hover:text-black hover:bg-white hover:rounded-sm",
               "flex justify-center items-center",
             )}
           >
@@ -249,7 +249,7 @@ export default function SimliOpenAI({ avatarName }: SimliOpenAIProps) {
           <div className="flex items-center gap-4 w-full">
             <button
               onClick={() => end()}
-              className="mt-4 group text-white flex-grow bg-red hover:rounded-xs hover:bg-white h-[52px] px-6 rounded-[100px] transition-all duration-300 flex justify-center items-center"
+              className="mt-4 group text-white flex-grow bg-red hover:rounded-sm hover:bg-white h-[52px] px-6 rounded-[100px] transition-all duration-300 flex justify-center items-center"
             >
               {status === "starting" ? (
                 <IconSparkleLoader className="h-[20px] w-auto animate-loader group-hover:invert" />

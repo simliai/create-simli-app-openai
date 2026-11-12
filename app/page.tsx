@@ -1,99 +1,74 @@
-"use client";
-import React, { use, useEffect, useState } from "react";
-import SimliOpenAI from "./SimliOpenAI";
-import DottedFace from "./Components/DottedFace";
+import { avatar } from "./avatar";
 import SimliHeaderLogo from "./Components/Logo";
-import Navbar from "./Components/Navbar";
-import Image from "next/image";
-import GitHubLogo from "@/media/github-mark-white.svg";
+import SimliOpenAI from "./SimliOpenAI";
 
-interface avatarSettings {
-  name: string;
-  openai_voice: "alloy" | "ash" | "ballad" | "coral" | "echo" | "sage" | "shimmer" | "verse";
-  openai_model: string;
-  simli_faceid: string;
-  initialPrompt: string;
-}
+const REPO_URL = "https://github.com/simliai/create-simli-app-openai";
 
-// Customize your avatar here
-const avatar: avatarSettings = {
-  name: "Frank",
-  openai_voice: "echo",
-  openai_model: "gpt-4o-mini-realtime-preview-2024-12-17", // Use "gpt-4o-mini-realtime-preview-2024-12-17" for cheaper and faster responses
-  simli_faceid: "6ebf0aa7-6fed-443d-a4c6-fd1e3080b215",
-  initialPrompt:
-    "You are a helpful AI assistant named Frank. You are friendly and concise in your responses. Your task is to help users with any questions they might have. Your answers are short and to the point, don't give long answers be brief and straightforward.",
-};
+const links = [
+  { href: "https://docs.simli.com", label: "Docs" },
+  { href: "https://discord.gg/yQx49zNF4d", label: "Discord" },
+  { href: REPO_URL, label: "GitHub" },
+];
 
-const Demo: React.FC = () => {
-  const [showDottedFace, setShowDottedFace] = useState(true);
-
-  const onStart = () => {
-    console.log("Setting setshowDottedface to false...");
-    setShowDottedFace(false);
-  };
-
-  const onClose = () => {
-    console.log("Setting setshowDottedface to true...");
-    setShowDottedFace(true);
-  };
-
+// The avatar (name, prompt, voice, model) is configured in app/avatar.ts, and the
+// face in SIMLI_FACE_ID. Both are read on the server; only the name reaches the page.
+export default function Demo() {
   return (
-    <div className="bg-black min-h-screen flex flex-col items-center font-abc-repro font-normal text-sm text-white p-8">
-      <SimliHeaderLogo />
-      <Navbar />
-      <div className="absolute top-[32px] right-[32px]">
-        <text
-          onClick={() => {
-            window.open("https://github.com/simliai/create-simli-app-openai");
-          }}
-          className="font-bold cursor-pointer mb-8 text-xl leading-8"
-        >
-          <Image className="w-[20px] inline mr-2" src={GitHubLogo} alt="" />
-          create-simli-app (OpenAI)
-        </text>
-      </div>
-      <div className="flex flex-col items-center gap-6 bg-effect15White p-6 pb-[40px] rounded-xl w-full">
-        <div>
-          {showDottedFace && <DottedFace />}
-          <SimliOpenAI
-            openai_voice={avatar.openai_voice}
-            openai_model={avatar.openai_model}
-            simli_faceid={avatar.simli_faceid}
-            initialPrompt={avatar.initialPrompt}
-            onStart={onStart}
-            onClose={onClose}
-            showDottedFace={showDottedFace}
-          />
-        </div>
-      </div>
+    <div className="bg-black min-h-screen flex flex-col font-abc-repro font-normal text-sm text-white">
+      <header className="w-full max-w-[1100px] mx-auto flex items-center justify-between px-6 py-6">
+        <SimliHeaderLogo />
+        <nav className="flex items-center gap-6 text-gray-300">
+          {links.map((l) => (
+            <a key={l.href} href={l.href} target="_blank" rel="noopener noreferrer" className="hover:text-white">
+              {l.label}
+            </a>
+          ))}
+        </nav>
+      </header>
 
-      <div className="max-w-[350px] font-thin flex flex-col items-center ">
-        <span className="font-bold mb-[8px] leading-5 ">
-          {" "}
-          Create Simli App is a starter repo for creating visual avatars with
-          Simli{" "}
-        </span>
-        <ul className="list-decimal list-inside max-w-[350px] ml-[6px] mt-2">
-          <li className="mb-1">
-            Fill in your OpenAI and Simli API keys in .env file.
-          </li>
-          <li className="mb-1">
-            Test out the interaction and have a talk with the OpenAI-powered,
-            Simli-visualized avatar.
-          </li>
-          <li className="mb-1">
-            You can replace the avatar's face and prompt with your own. Do this
-            by editing <code>app/page.tsx</code>.
-          </li>
-        </ul>
-        <span className=" mt-[16px]">
-          You can now deploy this app to Vercel, or incorporate it as part of
-          your existing project.
-        </span>
-      </div>
+      <main className="flex-1 w-full max-w-[1100px] mx-auto flex flex-col items-center px-6 pb-12">
+        <div className="text-center mb-6">
+          <h1 className="text-2xl font-bold leading-tight">Talk to OpenAI Realtime</h1>
+          <p className="text-gray-400 mt-2">A real-time Simli avatar speaks the model&apos;s replies.</p>
+        </div>
+
+        <div className="w-full max-w-[960px]">
+          <SimliOpenAI avatarName={avatar.name} />
+        </div>
+
+        <section className="w-full max-w-[960px] mt-12 rounded-lg border border-white/10 p-6 text-gray-300">
+          <h2 className="text-white font-bold mb-4">Run it yourself</h2>
+          <ol className="grid gap-4 sm:grid-cols-3">
+            <li>
+              <span className="block text-white mb-1">1. Add your keys</span>
+              Copy <code className="font-abc-repro-mono text-xs">.env.example</code> to{" "}
+              <code className="font-abc-repro-mono text-xs">.env.local</code> and add your Simli and OpenAI API keys.
+            </li>
+            <li>
+              <span className="block text-white mb-1">2. Start it</span>
+              Run <code className="font-abc-repro-mono text-xs">npm install</code> and{" "}
+              <code className="font-abc-repro-mono text-xs">npm run dev</code>, then open this page.
+            </li>
+            <li>
+              <span className="block text-white mb-1">3. Make it yours</span>
+              Change <code className="font-abc-repro-mono text-xs">SIMLI_FACE_ID</code> for another avatar, and the
+              prompt, voice and model in <code className="font-abc-repro-mono text-xs">app/avatar.ts</code>.
+            </li>
+          </ol>
+          <p className="mt-6 text-xs text-gray-500">
+            Before deploying, put the session routes behind your own sign-in. See the{" "}
+            <a
+              href={`${REPO_URL}#before-you-deploy`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-white"
+            >
+              README
+            </a>
+            .
+          </p>
+        </section>
+      </main>
     </div>
   );
-};
-
-export default Demo;
+}

@@ -7,7 +7,7 @@ Start with `python3 scripts/check_setup.py`: it confirms the key, the face and t
 | Message / status | Meaning | Fix |
 |---|---|---|
 | `401`, "Unauthorized", invalid API key | `SIMLI_API_KEY` wrong, revoked or missing in that process | Check the env var is loaded where the code runs (server, worker, container), and that there is no stray whitespace or quotes |
-| `400`, `INVALID_FACE_ID`, face not found | Face ID doesn't exist | Use a preset (`bf13113a-355a-4d97-8b90-4edccd1da7b2`) or copy the ID from the dashboard |
+| `400`, `INVALID_FACE_ID`, face not found | Face ID doesn't exist | Use a preset (`14c60d62-6ebf-424d-b626-1f4f91c33b04`) or copy the ID from the dashboard |
 | `403` `FACE_NOT_ALLOWED` | Face is private to another account | Use one of the account's own faces, or a preset |
 | `403` on face creation | No Trinity-2 generations left on the plan | Use a preset, or upgrade the plan |
 | `422` | Invalid framing: not 1:1 / 16:9 / 9:16, a side under 512, or a position outside 0–1 | Fix the `streaming_*` / `avatar_position_*` values |

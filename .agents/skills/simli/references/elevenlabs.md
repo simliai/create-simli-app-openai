@@ -26,7 +26,7 @@ Echo: Simli's voice plays from the speakers while the mic is open. The mic is op
 
 ```bash
 SIMLI_API_KEY=
-SIMLI_FACE_ID=bf13113a-355a-4d97-8b90-4edccd1da7b2
+SIMLI_FACE_ID=14c60d62-6ebf-424d-b626-1f4f91c33b04
 ELEVENLABS_API_KEY=
 ELEVENLABS_AGENT_ID=
 ```
@@ -49,7 +49,7 @@ export async function POST() {
     const { session_token, warnings } = await generateSimliSessionToken({
       apiKey,
       config: {
-        faceId: process.env.SIMLI_FACE_ID || "bf13113a-355a-4d97-8b90-4edccd1da7b2",
+        faceId: process.env.SIMLI_FACE_ID || "14c60d62-6ebf-424d-b626-1f4f91c33b04",
         maxSessionLength: 600, // seconds
         maxIdleTime: 180, // seconds without audio
         handleSilence: true, // ElevenLabs audio arrives in bursts

@@ -25,7 +25,7 @@ import urllib.request
 from pathlib import Path
 
 API = "https://api.simli.ai"
-DEFAULT_FACE = "bf13113a-355a-4d97-8b90-4edccd1da7b2"  # preset "Anna" (Trinity-2)
+DEFAULT_FACE = "14c60d62-6ebf-424d-b626-1f4f91c33b04"  # Simli's default Trinity-2 face
 
 
 def load_env_file(path: Path) -> None:
@@ -106,7 +106,7 @@ def main() -> int:
         help="env file to read if the variables aren't set (default ./.env)",
     )
     p.add_argument(
-        "--face", help="face ID to check (default: $SIMLI_FACE_ID, else the Anna preset)"
+        "--face", help="face ID to check (default: $SIMLI_FACE_ID, else Simli's default face)"
     )
     p.add_argument("--audio", type=Path, help="a PCM16 16 kHz mono file to sanity-check")
     args = p.parse_args()
@@ -168,7 +168,7 @@ def main() -> int:
 
         if key_ok:
             status, body = get(f"/face/{face}", key)
-            label = "preset Anna" if face == DEFAULT_FACE else "face"
+            label = "Simli default face" if face == DEFAULT_FACE else "face"
             if status == 200 and isinstance(body, dict):
                 version = body.get("simli_version")
                 gen = {3: "Trinity-2"}.get(

@@ -24,7 +24,7 @@ LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 SIMLI_API_KEY=...
-SIMLI_FACE_ID=bf13113a-355a-4d97-8b90-4edccd1da7b2
+SIMLI_FACE_ID=14c60d62-6ebf-424d-b626-1f4f91c33b04
 OPENAI_API_KEY=...
 ```
 
@@ -55,7 +55,7 @@ async def entrypoint(ctx: JobContext) -> None:
     avatar = simli.AvatarSession(
         simli_config=simli.SimliConfig(
             api_key=os.environ["SIMLI_API_KEY"],
-            face_id=os.getenv("SIMLI_FACE_ID") or "bf13113a-355a-4d97-8b90-4edccd1da7b2",
+            face_id=os.getenv("SIMLI_FACE_ID") or "14c60d62-6ebf-424d-b626-1f4f91c33b04",
             max_session_length=600,  # seconds; the avatar leaves after this
             max_idle_time=300,  # seconds without speech before the avatar leaves
         ),

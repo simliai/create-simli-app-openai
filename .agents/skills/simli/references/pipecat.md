@@ -41,7 +41,7 @@ transport = SmallWebRTCTransport(  # or DailyTransport, FastAPIWebsocketTranspor
 
 simli = SimliVideoService(
     api_key=os.environ["SIMLI_API_KEY"],
-    face_id=os.getenv("SIMLI_FACE_ID") or "bf13113a-355a-4d97-8b90-4edccd1da7b2",
+    face_id=os.getenv("SIMLI_FACE_ID") or "14c60d62-6ebf-424d-b626-1f4f91c33b04",
     max_session_length=600,  # seconds
     max_idle_time=120,  # seconds
     framing=SimliVideoService.Framing(

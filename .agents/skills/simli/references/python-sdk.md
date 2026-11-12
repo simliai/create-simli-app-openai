@@ -26,7 +26,7 @@ async def main():
     async with SimliClient(
         api_key=os.environ["SIMLI_API_KEY"],
         config=SimliConfig(
-            faceId=os.getenv("SIMLI_FACE_ID", "bf13113a-355a-4d97-8b90-4edccd1da7b2"),
+            faceId=os.getenv("SIMLI_FACE_ID", "14c60d62-6ebf-424d-b626-1f4f91c33b04"),
             maxSessionLength=120,  # seconds
             maxIdleTime=30,  # seconds
         ),
